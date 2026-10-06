@@ -1,0 +1,1 @@
+{"version":3,"file":"listTripsParams.d.ts","sourceRoot":"","sources":["../../../src/generated/types/listTripsParams.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AAEH,MAAM,MAAM,eAAe,GAAG;IAC9B,MAAM,CAAC,EAAE,MAAM,CAAC;IAChB,WAAW,CAAC,EAAE,MAAM,CAAC;IACrB,IAAI,CAAC,EAAE,IAAI,CAAC;IACZ,MAAM,CAAC,EAAE,MAAM,CAAC;CACf,CAAC"}

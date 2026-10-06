@@ -1,0 +1,276 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: API da plataforma Viangola Interprovincial
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+  - name: dashboard
+  - name: trips
+  - name: bookings
+  - name: payments
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Obter resumo operacional
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /trips:
+    get:
+      operationId: listTrips
+      tags: [trips]
+      summary: Pesquisar viagens
+      parameters:
+        - name: origin
+          in: query
+          schema: { type: string }
+        - name: destination
+          in: query
+          schema: { type: string }
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Viagens
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Trip" }
+    post:
+      operationId: createTrip
+      tags: [trips]
+      summary: Criar viagem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TripInput" }
+      responses:
+        "201":
+          description: Viagem criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+  /trips/{tripId}:
+    get:
+      operationId: getTrip
+      tags: [trips]
+      summary: Obter viagem
+      parameters:
+        - $ref: "#/components/parameters/TripId"
+      responses:
+        "200":
+          description: Viagem
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+        "404": { description: Não encontrado }
+  /trips/{tripId}/seats:
+    get:
+      operationId: getTripSeats
+      tags: [trips]
+      summary: Obter lugares da viagem
+      parameters:
+        - $ref: "#/components/parameters/TripId"
+      responses:
+        "200":
+          description: Lugares
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TripSeat" }
+  /bookings:
+    get:
+      operationId: listBookings
+      tags: [bookings]
+      summary: Listar reservas
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reservas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Booking" }
+    post:
+      operationId: createBooking
+      tags: [bookings]
+      summary: Reservar lugar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingInput" }
+      responses:
+        "201":
+          description: Reserva criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      summary: Listar pagamentos
+      responses:
+        "200":
+          description: Pagamentos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Payment" }
+  /payments/{paymentId}/confirm:
+    post:
+      operationId: confirmPayment
+      tags: [payments]
+      summary: Confirmar pagamento
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Pagamento confirmado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+components:
+  parameters:
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      schema: { type: number }
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string }
+      required: [status]
+    Dashboard:
+      type: object
+      required: [revenue, revenueChange, bookings, activeDrivers, completedTrips, passengers, weeklyRevenue, recentBookings]
+      properties:
+        revenue: { type: number }
+        revenueChange: { type: number }
+        bookings: { type: number }
+        activeDrivers: { type: number }
+        completedTrips: { type: number }
+        passengers: { type: number }
+        weeklyRevenue:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevenuePoint"
+        recentBookings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Booking"
+    RevenuePoint:
+      type: object
+      required: [day, amount]
+      properties:
+        day: { type: string }
+        amount: { type: number }
+    Trip:
+      type: object
+      required: [id, origin, destination, departureDate, departureTime, price, availableSeats, totalSeats, status, driverName, vehicleLabel]
+      properties:
+        id: { type: number }
+        origin: { type: string }
+        destination: { type: string }
+        departureDate: { type: string, format: date }
+        departureTime: { type: string }
+        arrivalEstimate: { type: string }
+        price: { type: number }
+        availableSeats: { type: number }
+        totalSeats: { type: number }
+        status: { type: string }
+        distance: { type: number }
+        duration: { type: number }
+        driverName: { type: string }
+        vehicleLabel: { type: string }
+    TripInput:
+      type: object
+      required: [origin, destination, departureDate, departureTime, price, totalSeats]
+      properties:
+        origin: { type: string, minLength: 2 }
+        destination: { type: string, minLength: 2 }
+        departureDate: { type: string, format: date }
+        departureTime: { type: string }
+        price: { type: number, minimum: 0 }
+        totalSeats: { type: number, minimum: 1 }
+    TripSeat:
+      type: object
+      required: [id, tripId, seatNumber, seatStatus]
+      properties:
+        id: { type: number }
+        tripId: { type: number }
+        seatNumber: { type: string }
+        seatStatus: { type: string }
+        passengerName: { type: ["string", "null"] }
+    Booking:
+      type: object
+      required: [id, tripId, passengerName, origin, destination, seatNumber, amount, status, bookingDate]
+      properties:
+        id: { type: number }
+        tripId: { type: number }
+        passengerName: { type: string }
+        origin: { type: string }
+        destination: { type: string }
+        seatNumber: { type: string }
+        amount: { type: number }
+        status: { type: string }
+        bookingDate: { type: string, format: date-time }
+    BookingInput:
+      type: object
+      required: [tripId, passengerName, seatNumber]
+      properties:
+        tripId: { type: number }
+        passengerName: { type: string, minLength: 2 }
+        seatNumber: { type: string }
+    Payment:
+      type: object
+      required: [id, bookingId, referenceNumber, paymentMethod, amount, status, createdAt, passengerName]
+      properties:
+        id: { type: number }
+        bookingId: { type: number }
+        referenceNumber: { type: string }
+        paymentMethod: { type: string }
+        amount: { type: number }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        passengerName: { type: string }
