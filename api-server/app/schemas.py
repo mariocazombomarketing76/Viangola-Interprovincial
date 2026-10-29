@@ -1,7 +1,56 @@
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+
+# --------------------------- Autenticação ---------------------------
+
+class RegisterInput(BaseModel):
+    fullName: str = Field(min_length=2, max_length=160)
+    email: EmailStr
+    password: str = Field(min_length=8)
+    phone: str | None = Field(default=None, max_length=40)
+    role: Literal["passenger", "driver"] = "passenger"
+
+
+class LoginInput(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class RefreshInput(BaseModel):
+    refreshToken: str
+
+
+class LogoutInput(BaseModel):
+    refreshToken: str | None = None
+
+
+class UserOut(BaseModel):
+    id: int
+    fullName: str
+    email: str | None
+    phone: str | None
+    role: str
+    isActive: bool
+    createdAt: datetime
+    lastLogin: datetime | None
+
+
+class TokenOut(BaseModel):
+    accessToken: str
+    refreshToken: str
+    tokenType: str = "bearer"
+    expiresIn: int
+    user: UserOut
+
+
+class AuthStatus(BaseModel):
+    status: str
+
+
+# ----------------------------- Viagens ------------------------------
 
 class TripInput(BaseModel):
     origin: str

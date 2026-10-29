@@ -17,6 +17,122 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Registar nova conta (passageiro ou motorista)
+ */
+export const registerBodyFullNameMin = 2;
+export const registerBodyFullNameMax = 160;
+
+export const registerBodyPasswordMin = 8;
+
+export const registerBodyPhoneMax = 40;
+
+export const registerBodyRoleDefault = `passenger`;
+
+export const RegisterBody = zod.object({
+  "fullName": zod.string().min(registerBodyFullNameMin).max(registerBodyFullNameMax),
+  "email": zod.string().describe('Email único (validado no servidor)'),
+  "password": zod.string().min(registerBodyPasswordMin).describe('Mínimo de 8 caracteres (guardada apenas como hash bcrypt)'),
+  "phone": zod.string().max(registerBodyPhoneMax).optional().describe('Telefone único'),
+  "role": zod.enum(['passenger', 'driver']).default(registerBodyRoleDefault).describe('O registo de admin não é auto-registável')
+})
+
+export const RegisterResponse = zod.object({
+  "accessToken": zod.string().describe('JWT de acesso (30 min)'),
+  "refreshToken": zod.string().describe('JWT de refresh (14 dias'),
+  "tokenType": zod.enum(['bearer']),
+  "expiresIn": zod.number().describe('Validade do access token em segundos'),
+  "user": zod.object({
+  "id": zod.number(),
+  "fullName": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "role": zod.enum(['admin', 'driver', 'passenger']),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "lastLogin": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary Iniciar sessão
+ */
+export const LoginBody = zod.object({
+  "email": zod.string().describe('Email da conta'),
+  "password": zod.string()
+})
+
+export const LoginResponse = zod.object({
+  "accessToken": zod.string().describe('JWT de acesso (30 min)'),
+  "refreshToken": zod.string().describe('JWT de refresh (14 dias'),
+  "tokenType": zod.enum(['bearer']),
+  "expiresIn": zod.number().describe('Validade do access token em segundos'),
+  "user": zod.object({
+  "id": zod.number(),
+  "fullName": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "role": zod.enum(['admin', 'driver', 'passenger']),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "lastLogin": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary Renovar a sessão (rotação do refresh token)
+ */
+export const RefreshSessionBody = zod.object({
+  "refreshToken": zod.string()
+})
+
+export const RefreshSessionResponse = zod.object({
+  "accessToken": zod.string().describe('JWT de acesso (30 min)'),
+  "refreshToken": zod.string().describe('JWT de refresh (14 dias'),
+  "tokenType": zod.enum(['bearer']),
+  "expiresIn": zod.number().describe('Validade do access token em segundos'),
+  "user": zod.object({
+  "id": zod.number(),
+  "fullName": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "role": zod.enum(['admin', 'driver', 'passenger']),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "lastLogin": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary Terminar sessão (revoga o refresh token)
+ */
+export const LogoutBody = zod.object({
+  "refreshToken": zod.string().optional().describe('Opcional — revoga a sessão apresentada')
+})
+
+export const LogoutResponse = zod.object({
+  "status": zod.string()
+})
+
+
+/**
+ * @summary Perfil do utilizador autenticado
+ */
+export const GetMeResponse = zod.object({
+  "id": zod.number(),
+  "fullName": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "role": zod.enum(['admin', 'driver', 'passenger']),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "lastLogin": zod.coerce.date().nullable()
+})
+
+
+/**
  * @summary Obter resumo operacional
  */
 export const GetDashboardResponse = zod.object({
@@ -74,7 +190,7 @@ export const ListTripsResponse = zod.array(ListTripsResponseItem)
 
 
 /**
- * @summary Criar viagem
+ * @summary Criar viagem (admin)
  */
 export const createTripBodyOriginMin = 2;
 
@@ -155,7 +271,7 @@ export const GetTripSeatsResponse = zod.array(GetTripSeatsResponseItem)
 
 
 /**
- * @summary Listar reservas
+ * @summary Listar reservas (âmbito limitado pelo papel do utilizador)
  */
 export const ListBookingsQueryParams = zod.object({
   "status": zod.coerce.string().optional()
@@ -176,7 +292,7 @@ export const ListBookingsResponse = zod.array(ListBookingsResponseItem)
 
 
 /**
- * @summary Reservar lugar
+ * @summary Reservar lugar (passageiro autenticado)
  */
 export const createBookingBodyPassengerNameMin = 2;
 
@@ -202,7 +318,7 @@ export const CreateBookingResponse = zod.object({
 
 
 /**
- * @summary Listar pagamentos
+ * @summary Listar pagamentos (admin)
  */
 export const ListPaymentsResponseItem = zod.object({
   "id": zod.number(),
@@ -218,7 +334,7 @@ export const ListPaymentsResponse = zod.array(ListPaymentsResponseItem)
 
 
 /**
- * @summary Confirmar pagamento
+ * @summary Confirmar pagamento (admin)
  */
 export const ConfirmPaymentParams = zod.object({
   "paymentId": zod.coerce.number()

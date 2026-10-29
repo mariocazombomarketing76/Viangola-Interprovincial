@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -16,9 +17,12 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(30), nullable=False, default="passenger")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     driver: Mapped["Driver | None"] = relationship(back_populates="user", foreign_keys="Driver.user_id")
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Driver(Base):
@@ -96,6 +100,19 @@ class Booking(Base):
     booking_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     passenger: Mapped[User | None] = relationship()
     trip: Mapped[Trip] = relationship()
+
+
+class RefreshToken(Base):
+    """Sessões de refresh — permite revogar tokens (logout) e detetar reuso."""
+
+    __tablename__ = "refresh_tokens"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    user: Mapped[User] = relationship(back_populates="refresh_tokens")
 
 
 class Payment(Base):

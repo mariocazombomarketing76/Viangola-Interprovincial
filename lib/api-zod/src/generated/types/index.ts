@@ -6,14 +6,24 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './authStatus';
 export * from './booking';
 export * from './bookingInput';
 export * from './dashboard';
 export * from './healthStatus';
 export * from './listBookingsParams';
 export * from './listTripsParams';
+export * from './loginInput';
+export * from './logoutInput';
 export * from './payment';
+export * from './refreshInput';
+export * from './registerInput';
+export * from './registerInputRole';
 export * from './revenuePoint';
+export * from './tokenOutput';
+export * from './tokenOutputTokenType';
 export * from './trip';
 export * from './tripInput';
 export * from './tripSeat';
+export * from './userOutput';
+export * from './userOutputRole';

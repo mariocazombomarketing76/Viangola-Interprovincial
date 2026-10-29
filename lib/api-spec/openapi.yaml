@@ -8,6 +8,7 @@ servers:
     description: Base API path
 tags:
   - name: health
+  - name: auth
   - name: dashboard
   - name: trips
   - name: bookings
@@ -25,11 +26,95 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Registar nova conta (passageiro ou motorista)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterInput" }
+      responses:
+        "201":
+          description: Conta criada e sessão iniciada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenOutput" }
+        "409": { description: Email ou telefone já registado }
+        "422": { description: Dados inválidos }
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Iniciar sessão
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginInput" }
+      responses:
+        "200":
+          description: Sessão iniciada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenOutput" }
+        "401": { description: Credenciais inválidas ou conta desativada }
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      tags: [auth]
+      summary: Renovar a sessão (rotação do refresh token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshInput" }
+      responses:
+        "200":
+          description: Novos tokens emitidos (o refresh token anterior é revogado)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenOutput" }
+        "401": { description: "Sessão inválida, terminada ou expirada" }
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Terminar sessão (revoga o refresh token)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LogoutInput" }
+      responses:
+        "200":
+          description: Sessão terminada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthStatus" }
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Perfil do utilizador autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Perfil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserOutput" }
+        "401": { description: Não autenticado ou token expirado }
   /dashboard:
     get:
       operationId: getDashboard
       tags: [dashboard]
       summary: Obter resumo operacional
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Dashboard summary
@@ -66,7 +151,9 @@ paths:
     post:
       operationId: createTrip
       tags: [trips]
-      summary: Criar viagem
+      summary: Criar viagem (admin)
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -111,7 +198,9 @@ paths:
     get:
       operationId: listBookings
       tags: [bookings]
-      summary: Listar reservas
+      summary: Listar reservas (âmbito limitado pelo papel do utilizador)
+      security:
+        - bearerAuth: []
       parameters:
         - name: status
           in: query
@@ -127,7 +216,9 @@ paths:
     post:
       operationId: createBooking
       tags: [bookings]
-      summary: Reservar lugar
+      summary: Reservar lugar (passageiro autenticado)
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -143,7 +234,9 @@ paths:
     get:
       operationId: listPayments
       tags: [payments]
-      summary: Listar pagamentos
+      summary: Listar pagamentos (admin)
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Pagamentos
@@ -156,7 +249,9 @@ paths:
     post:
       operationId: confirmPayment
       tags: [payments]
-      summary: Confirmar pagamento
+      summary: Confirmar pagamento (admin)
+      security:
+        - bearerAuth: []
       parameters:
         - name: paymentId
           in: path
@@ -169,6 +264,14 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Payment" }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Access token JWT (30 min) devolvido por /auth/login, /auth/register ou
+        /auth/refresh. Enviar como `Authorization: Bearer <token>`.
   parameters:
     TripId:
       name: tripId
@@ -274,3 +377,60 @@ components:
         status: { type: string }
         createdAt: { type: string, format: date-time }
         passengerName: { type: string }
+    RegisterInput:
+      type: object
+      required: [fullName, email, password]
+      properties:
+        fullName: { type: string, minLength: 2, maxLength: 160 }
+        # Nota: `format: email` é omitedo de propósito — o gerador zod do Orval
+        # emite `z.email()` (API zod v4) e este workspace usa zod v3. A validação
+        # de email acontece no servidor (Pydantic EmailStr) e aparece em /docs.
+        email: { type: string, description: Email único (validado no servidor) }
+        password: { type: string, minLength: 8, description: Mínimo de 8 caracteres (guardada apenas como hash bcrypt) }
+        phone: { type: string, maxLength: 40, description: Telefone único }
+        role:
+          type: string
+          enum: [passenger, driver]
+          default: passenger
+          description: "O registo de admin não é auto-registável"
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, description: Email da conta }
+        password: { type: string }
+    RefreshInput:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+    LogoutInput:
+      type: object
+      properties:
+        refreshToken: { type: string, description: Opcional — revoga a sessão apresentada }
+    UserOutput:
+      type: object
+      required: [id, fullName, email, phone, role, isActive, createdAt, lastLogin]
+      properties:
+        id: { type: number }
+        fullName: { type: string }
+        email: { type: [string, "null"] }
+        phone: { type: [string, "null"] }
+        role: { type: string, enum: [admin, driver, passenger] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        lastLogin: { type: [string, "null"], format: date-time }
+    TokenOutput:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: { type: string, description: JWT de acesso (30 min) }
+        refreshToken: { type: string, description: JWT de refresh (14 dias, rotativo) }
+        tokenType: { type: string, enum: [bearer] }
+        expiresIn: { type: number, description: Validade do access token em segundos }
+        user: { $ref: "#/components/schemas/UserOutput" }
+    AuthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }

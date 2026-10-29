@@ -94,6 +94,99 @@ export interface Payment {
   passengerName: string;
 }
 
+/**
+ * O registo de admin não é auto-registável
+ */
+export type RegisterInputRole = typeof RegisterInputRole[keyof typeof RegisterInputRole];
+
+
+export const RegisterInputRole = {
+  passenger: 'passenger',
+  driver: 'driver',
+} as const;
+
+export interface RegisterInput {
+  /**
+     * @minLength 2
+     * @maxLength 160
+     */
+  fullName: string;
+  /** Email único (validado no servidor) */
+  email: string;
+  /**
+     * Mínimo de 8 caracteres (guardada apenas como hash bcrypt)
+     * @minLength 8
+     */
+  password: string;
+  /**
+     * Telefone único
+     * @maxLength 40
+     */
+  phone?: string;
+  /** O registo de admin não é auto-registável */
+  role?: RegisterInputRole;
+}
+
+export interface LoginInput {
+  /** Email da conta */
+  email: string;
+  password: string;
+}
+
+export interface RefreshInput {
+  refreshToken: string;
+}
+
+export interface LogoutInput {
+  /** Opcional — revoga a sessão apresentada */
+  refreshToken?: string;
+}
+
+export type UserOutputRole = typeof UserOutputRole[keyof typeof UserOutputRole];
+
+
+export const UserOutputRole = {
+  admin: 'admin',
+  driver: 'driver',
+  passenger: 'passenger',
+} as const;
+
+export interface UserOutput {
+  id: number;
+  fullName: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  phone: string | null;
+  role: UserOutputRole;
+  isActive: boolean;
+  createdAt: string;
+  /** @nullable */
+  lastLogin: string | null;
+}
+
+export type TokenOutputTokenType = typeof TokenOutputTokenType[keyof typeof TokenOutputTokenType];
+
+
+export const TokenOutputTokenType = {
+  bearer: 'bearer',
+} as const;
+
+export interface TokenOutput {
+  /** JWT de acesso (30 min) */
+  accessToken: string;
+  /** JWT de refresh (14 dias */
+  refreshToken: string;
+  tokenType: TokenOutputTokenType;
+  /** Validade do access token em segundos */
+  expiresIn: number;
+  user: UserOutput;
+}
+
+export interface AuthStatus {
+  status: string;
+}
+
 export type ListTripsParams = {
 origin?: string;
 destination?: string;

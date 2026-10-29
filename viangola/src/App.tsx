@@ -14,6 +14,7 @@ import {
   CreditCard,
   LayoutDashboard,
   Loader2,
+  LogOut,
   MapPin,
   Menu,
   Navigation,
@@ -48,7 +49,11 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { Link, Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
+import Login from '@/pages/login';
+import Register from '@/pages/register';
+import Profile from '@/pages/profile';
+import { AuthProvider, useAuth } from '@/lib/auth';
+import { Link, Redirect, Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
 const provinces = ['Luanda', 'Benguela', 'Huambo', 'Lubango', 'Malanje', 'Namibe', 'Cabinda', 'Uíge'];
@@ -88,26 +93,65 @@ function BrandMark() {
 }
 
 const navItems = [
-  { href: '/dashboard', label: 'Resumo', icon: LayoutDashboard },
-  { href: '/trips', label: 'Viagens', icon: BusFront },
-  { href: '/bookings', label: 'Reservas', icon: Ticket },
-  { href: '/payments', label: 'Pagamentos', icon: WalletCards },
+  { href: '/dashboard', label: 'Resumo', icon: LayoutDashboard, roles: ['admin'] },
+  { href: '/trips', label: 'Viagens', icon: BusFront, roles: ['admin'] },
+  { href: '/bookings', label: 'Reservas', icon: Ticket, roles: ['admin', 'driver', 'passenger'] },
+  { href: '/payments', label: 'Pagamentos', icon: WalletCards, roles: ['admin'] },
 ];
 
-function Shell({ children }: { children: ReactNode }) {
+const roleLabel = (role?: string) =>
+  role === 'admin'
+    ? 'ADMINISTRADOR'
+    : role === 'driver'
+      ? 'MOTORISTA'
+      : role === 'passenger'
+        ? 'PASSAGEIRO'
+        : 'CONVIDADO';
+
+function RequireAuth({ roles, children }: { roles?: string[]; children: ReactNode }) {
+  const { session } = useAuth();
   const [location] = useLocation();
+  if (!session) return <Redirect to={`/login?next=${encodeURIComponent(location)}`} />;
+  if (roles && !roles.includes(session.user.role)) return <Forbidden />;
+  return <>{children}</>;
+}
+
+function Forbidden() {
+  return (
+    <div data-testid="state-forbidden" className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-10 text-center">
+      <ShieldCheck className="mx-auto h-7 w-7 text-[hsl(var(--muted-foreground))]" />
+      <p className="mt-3 font-display text-2xl font-bold">Área restrita</p>
+      <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">Não tem permissões para aceder a esta página.</p>
+      <Link href="/" className="mt-5 inline-flex rounded-xl bg-[hsl(var(--primary))] px-4 py-2.5 text-sm font-bold text-[hsl(var(--primary-foreground))] transition-transform hover:-translate-y-0.5">Voltar ao início</Link>
+    </div>
+  );
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
-  const isPassenger = location === '/';
-  if (isPassenger) return <div className="grain min-h-[100dvh] bg-[hsl(var(--background))]">{children}</div>;
+  const { session, user, logout } = useAuth();
+  const isBare = location === '/' || location === '/login' || location === '/register';
+  if (isBare) return <div className="grain min-h-[100dvh] bg-[hsl(var(--background))]">{children}</div>;
   return <div className="grain min-h-[100dvh] bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col bg-[hsl(var(--sidebar))] px-5 py-6 text-[hsl(var(--sidebar-foreground))] transition-transform duration-300 md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="flex items-center justify-between"><BrandMark /><button data-testid="button-close-menu" onClick={() => setOpen(false)} className="rounded-lg p-2 text-white/50 hover:bg-white/10 md:hidden"><X className="h-4 w-4" /></button></div>
-      <div className="mt-11"><p className="mb-3 px-3 font-mono text-[10px] uppercase tracking-[.2em] text-white/40">Comando</p><nav className="space-y-1">{navItems.map(({ href, label, icon: Icon }) => <Link key={href} href={href} data-testid={`link-nav-${label.toLowerCase()}`} onClick={() => setOpen(false)} className={`group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-colors ${location === href ? 'bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-primary))]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon className="h-[18px] w-[18px]" /><span>{label}</span>{location === href && <ChevronRight className="ml-auto h-4 w-4" />}</Link>)}</nav></div>
+      <div className="mt-11"><p className="mb-3 px-3 font-mono text-[10px] uppercase tracking-[.2em] text-white/40">Comando</p><nav className="space-y-1">{navItems.filter(({ roles }) => session && roles.includes(session.user.role)).map(({ href, label, icon: Icon }) => <Link key={href} href={href} data-testid={`link-nav-${label.toLowerCase()}`} onClick={() => setOpen(false)} className={`group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-colors ${location === href ? 'bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-primary))]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon className="h-[18px] w-[18px]" /><span>{label}</span>{location === href && <ChevronRight className="ml-auto h-4 w-4" />}</Link>)}</nav></div>
       <div className="mt-auto rounded-2xl border border-white/10 bg-white/[.06] p-4"><div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#35545a]"><ShieldCheck className="h-4 w-4 text-[hsl(var(--accent))]" /></div><p className="text-sm font-bold">Rede protegida</p><p className="mt-1 text-xs leading-5 text-white/45">Operação em tempo real, de Luanda a todas as províncias.</p></div>
-      <div className="mt-5 flex items-center gap-3 border-t border-white/10 pt-5"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-[hsl(var(--accent))] text-xs font-extrabold text-[hsl(var(--primary))]">AM</div><div><p className="text-xs font-bold">Ana Manuel</p><p className="font-mono text-[10px] text-white/40">OPERAÇÕES</p></div><button data-testid="button-help" onClick={() => window.alert('A equipa de operações está disponível para ajudar.')} className="ml-auto rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"><CircleHelp className="h-4 w-4" /></button></div>
+      <div className="mt-5 flex items-center gap-3 border-t border-white/10 pt-5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--accent))] text-xs font-extrabold text-[hsl(var(--primary))]">
+          {user ? user.fullName.split(' ').map((part) => part[0]).slice(0, 2).join('') : 'V'}
+        </div>
+        <div className="min-w-0"><p className="truncate text-xs font-bold">{user ? user.fullName : 'Visitante'}</p><p className="font-mono text-[10px] text-white/40">{roleLabel(user?.role)}</p></div>
+        {session ? (
+          <button data-testid="button-logout" onClick={() => { logout(); navigate('/'); }} title="Terminar sessão" className="ml-auto rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"><LogOut className="h-4 w-4" /></button>
+        ) : (
+          <Link href="/login" data-testid="link-sidebar-login" className="ml-auto rounded-lg border border-white/15 px-2.5 py-1 text-[10px] font-bold hover:bg-white/10">Entrar</Link>
+        )}
+      </div>
     </aside>
     {open && <button aria-label="Fechar menu" data-testid="button-overlay-menu" onClick={() => setOpen(false)} className="fixed inset-0 z-30 bg-[#0c292dcc] md:hidden" />}
-    <main className="min-h-[100dvh] md:pl-[250px]"><header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-5 backdrop-blur-md md:px-10"><div className="flex items-center gap-3"><button data-testid="button-open-menu" onClick={() => setOpen(true)} className="rounded-xl border border-[hsl(var(--border))] p-2 md:hidden"><Menu className="h-5 w-5" /></button><p className="font-mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">{location === '/dashboard' ? 'Visão geral' : location.slice(1)}</p></div><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] sm:flex"><span className="h-2 w-2 animate-pulse-soft rounded-full bg-[#43a96b]" />Sistema operacional</div><Link href="/" data-testid="link-passenger-view" className="rounded-full border border-[hsl(var(--border))] px-3 py-2 text-xs font-bold transition-colors hover:border-[hsl(var(--primary))]">Ver como passageiro</Link></div></header><div className="mx-auto max-w-[1380px] p-5 md:p-10">{children}</div></main>
+    <main className="min-h-[100dvh] md:pl-[250px]"><header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-5 backdrop-blur-md md:px-10"><div className="flex items-center gap-3"><button data-testid="button-open-menu" onClick={() => setOpen(true)} className="rounded-xl border border-[hsl(var(--border))] p-2 md:hidden"><Menu className="h-5 w-5" /></button><p className="font-mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">{location === '/dashboard' ? 'Visão geral' : location.slice(1)}</p></div><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] sm:flex"><span className="h-2 w-2 animate-pulse-soft rounded-full bg-[#43a96b]" />Sistema operacional</div>{session ? <Link href="/profile" data-testid="link-profile" className="rounded-full border border-[hsl(var(--border))] px-3 py-2 text-xs font-bold transition-colors hover:border-[hsl(var(--primary))]">Perfil</Link> : <Link href="/login" data-testid="link-header-login" className="rounded-full border border-[hsl(var(--border))] px-3 py-2 text-xs font-bold transition-colors hover:border-[hsl(var(--primary))]">Entrar</Link>}<Link href="/" data-testid="link-passenger-view" className="rounded-full border border-[hsl(var(--border))] px-3 py-2 text-xs font-bold transition-colors hover:border-[hsl(var(--primary))]">Ver como passageiro</Link></div></header><div className="mx-auto max-w-[1380px] p-5 md:p-10">{children}</div></main>
   </div>;
 }
 
@@ -117,6 +161,8 @@ function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; t
 
 function PassengerHome() {
   const client = useQueryClient();
+  const { session } = useAuth();
+  const [, navigate] = useLocation();
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -132,15 +178,16 @@ function PassengerHome() {
   const visibleTrips = trips.data || [];
   const selected = visibleTrips.find((trip) => trip.id === selectedTrip);
   const book = () => {
-    if (!selectedTrip || !passenger || !seat) return setNotice('Preencha o seu nome e escolha um lugar.');
-    createBooking.mutate({ data: { tripId: selectedTrip, passengerName: passenger, seatNumber: seat } }, { onSuccess: () => { setNotice('Reserva criada. O seu lugar está guardado.'); setPassenger(''); setSeat(''); client.invalidateQueries({ queryKey: getListBookingsQueryKey() }); client.invalidateQueries({ queryKey: getListTripsQueryKey() }); } });
+    if (!session) { navigate(`/login?next=${encodeURIComponent('/')}`); return; }
+    if (!selectedTrip || !seat) return setNotice('Escolha um lugar para continuar.');
+    createBooking.mutate({ data: { tripId: selectedTrip, passengerName: session.user.fullName, seatNumber: seat } }, { onSuccess: () => { setNotice('Reserva criada. O seu lugar está guardado.'); setSeat(''); client.invalidateQueries({ queryKey: getListBookingsQueryKey() }); client.invalidateQueries({ queryKey: getListTripsQueryKey() }); } });
   };
   return <div className="mx-auto max-w-[1280px] px-5 pb-10 md:px-10">
     <nav className="flex h-[76px] items-center justify-between"><BrandMark /><div className="flex items-center gap-3"><Link href="/dashboard" data-testid="link-operator-login" className="hidden text-sm font-bold text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--primary))] sm:block">Área de operadores</Link><Link href="/bookings" data-testid="link-my-bookings" className="rounded-xl bg-[hsl(var(--primary))] px-4 py-2.5 text-sm font-bold text-[hsl(var(--primary-foreground))] transition-transform hover:-translate-y-0.5">As minhas reservas</Link></div></nav>
     <section className="relative mt-4 overflow-hidden rounded-[28px] bg-[hsl(var(--primary))] px-6 py-12 text-[hsl(var(--primary-foreground))] md:px-14 md:py-16"><div className="absolute -right-16 -top-28 h-80 w-80 rounded-full border-[44px] border-[hsl(var(--accent))]/15" /><div className="absolute -bottom-40 right-40 h-72 w-72 rounded-full border-[30px] border-[#b95b42]/20" /><div className="relative max-w-2xl"><p className="mb-5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.22em] text-[hsl(var(--accent))]"><span className="h-px w-8 bg-[hsl(var(--accent))]" />A estrada começa aqui</p><h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight md:text-6xl">A próxima paragem<br /><span className="text-[hsl(var(--accent))]">é a sua.</span></h1><p className="mt-6 max-w-md text-sm leading-6 text-white/65 md:text-base">Viaje entre províncias com a rede que conhece o caminho. Lugares claros, partidas certas, pessoas reais.</p></div><div className="relative mt-10 grid gap-2 rounded-2xl bg-[#f8f2e9] p-2 text-[hsl(var(--primary))] shadow-2xl shadow-[#071f2780] md:grid-cols-[1fr_1fr_180px_auto] md:gap-0"><label className="flex items-center gap-3 border-b border-[#d9d0c3] px-4 py-3 md:border-b-0 md:border-r"><MapPin className="h-4 w-4 text-[#c2674b]" /><span className="flex-1"><span className="block font-mono text-[9px] uppercase tracking-wider text-[#8e958e]">De</span><select data-testid="select-origin" value={origin} onChange={(e) => setOrigin(e.target.value)} className="w-full bg-transparent text-sm font-bold outline-none"><option value="">Qualquer província</option>{provinces.map((p) => <option key={p} value={p}>{p}</option>)}</select></span></label><label className="flex items-center gap-3 border-b border-[#d9d0c3] px-4 py-3 md:border-b-0 md:border-r"><Navigation className="h-4 w-4 text-[#c2674b]" /><span className="flex-1"><span className="block font-mono text-[9px] uppercase tracking-wider text-[#8e958e]">Para</span><select data-testid="select-destination" value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full bg-transparent text-sm font-bold outline-none"><option value="">Qualquer província</option>{provinces.filter((p) => p !== origin).map((p) => <option key={p} value={p}>{p}</option>)}</select></span></label><label className="flex items-center gap-3 px-4 py-3"><CalendarDays className="h-4 w-4 text-[#c2674b]" /><span><span className="block font-mono text-[9px] uppercase tracking-wider text-[#8e958e]">Partida</span><input data-testid="input-search-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent text-sm font-bold outline-none" /></span></label><button data-testid="button-search-trips" onClick={() => setSearched(true)} className="flex items-center justify-center gap-2 rounded-xl bg-[hsl(var(--accent))] px-5 py-3 text-sm font-extrabold text-[hsl(var(--primary))] transition-transform hover:-translate-y-0.5"><Search className="h-4 w-4" />Procurar</button></div></section>
     <section className="py-12"><div className="mb-5 flex items-end justify-between"><div><p className="font-mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">Partidas disponíveis</p><h2 className="mt-2 font-display text-2xl font-bold">Escolha o seu caminho</h2></div>{searched && <button data-testid="button-clear-search" onClick={() => { setSearched(false); setOrigin(''); setDestination(''); }} className="text-xs font-bold text-[#b95b42]">Limpar filtros</button>}</div><QueryState loading={trips.isLoading} error={trips.error} onRetry={() => trips.refetch()}><div className="grid gap-3">{visibleTrips.length === 0 ? <div data-testid="state-empty-trips" className="rounded-2xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--card))] p-10 text-center"><BusFront className="mx-auto h-7 w-7 text-[hsl(var(--muted-foreground))]" /><p className="mt-3 font-bold">Ainda não há viagens para esta pesquisa</p><p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">Tente outra data ou deixe as províncias em aberto.</p></div> : visibleTrips.map((trip, index) => <button data-testid={`card-trip-${trip.id}`} key={trip.id} onClick={() => { setSelectedTrip(trip.id); setNotice(''); }} className="group grid items-center gap-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 text-left transition-all hover:-translate-y-0.5 hover:border-[#d8bc62] hover:shadow-lg hover:shadow-[#173d4510] md:grid-cols-[105px_1fr_150px_130px_105px]"><div><p className="font-display text-2xl font-bold">{trip.departureTime}</p><p className="text-xs text-[hsl(var(--muted-foreground))]">{dateLabel(trip.departureDate)}</p></div><div><div className="flex items-center gap-3 text-sm font-bold"><span>{trip.origin}</span><span className="route-line h-px w-12 opacity-50" /><span>{trip.destination}</span></div><p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">{trip.driverName} · {trip.vehicleLabel}</p></div><div className="hidden border-l border-[hsl(var(--border))] pl-5 md:block"><p className="font-mono text-xs text-[hsl(var(--muted-foreground))]">DURAÇÃO</p><p className="mt-1 text-sm font-bold">{trip.duration ? `${Math.floor(trip.duration / 60)}h ${trip.duration % 60}m` : '—'}</p></div><div><p className="font-display text-xl font-bold">{money(trip.price)}</p><p className="text-xs text-[hsl(var(--muted-foreground))]">{trip.availableSeats} lugares livres</p></div><div className="flex justify-end"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[hsl(var(--muted))] transition-colors group-hover:bg-[hsl(var(--accent))]"><ChevronRight className="h-4 w-4" /></span></div></button>)}</div></QueryState></section>
     <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 border-t border-[hsl(var(--border))] py-7 text-xs font-semibold text-[hsl(var(--muted-foreground))]"><span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#3f8b60]" />Pagamento seguro</span><span className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-[#3f8b60]" />Partidas acompanhadas</span><span className="flex items-center gap-2"><UsersRound className="h-4 w-4 text-[#3f8b60]" />Rede de confiança local</span></div>
-    {selected && <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0c292d99] p-0 backdrop-blur-sm md:items-center md:p-5"><div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] bg-[hsl(var(--card))] p-6 md:rounded-[24px] md:p-8"><div className="flex items-start justify-between"><div><p className="font-mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">Detalhes da viagem</p><h2 className="mt-2 font-display text-3xl font-bold">{selected.origin} <span className="text-[#bd684d]">→</span> {selected.destination}</h2><p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{fullDate(selected.departureDate)} · Partida às {selected.departureTime}</p></div><button data-testid="button-close-booking" onClick={() => setSelectedTrip(null)} className="rounded-full bg-[hsl(var(--muted))] p-2"><X className="h-4 w-4" /></button></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-[hsl(var(--muted))] p-3"><p className="font-mono text-[9px] text-[hsl(var(--muted-foreground))]">MOTORISTA</p><p className="mt-1 text-sm font-bold">{selected.driverName}</p></div><div className="rounded-xl bg-[hsl(var(--muted))] p-3"><p className="font-mono text-[9px] text-[hsl(var(--muted-foreground))]">VEÍCULO</p><p className="mt-1 text-sm font-bold">{selected.vehicleLabel}</p></div><div className="rounded-xl bg-[hsl(var(--muted))] p-3"><p className="font-mono text-[9px] text-[hsl(var(--muted-foreground))]">PREÇO</p><p className="mt-1 text-sm font-bold">{money(selected.price)}</p></div></div><div className="mt-7"><p className="mb-3 text-sm font-bold">Escolha o seu lugar</p><QueryState loading={seats.isLoading} error={seats.error} onRetry={() => seats.refetch()}><div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{(seats.data || []).map((item) => { const free = item.seatStatus.toLowerCase() === 'available' || item.seatStatus.toLowerCase() === 'free'; const picked = seat === item.seatNumber; return <button disabled={!free} data-testid={`button-seat-${item.seatNumber}`} key={item.id} onClick={() => setSeat(item.seatNumber)} className={`rounded-lg border p-2 text-xs font-bold transition-colors ${picked ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent))] text-[hsl(var(--primary))]' : free ? 'border-[hsl(var(--border))] bg-[hsl(var(--background))] hover:border-[hsl(var(--accent))]' : 'cursor-not-allowed border-transparent bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] opacity-50'}`}>{item.seatNumber}</button> })}</div></QueryState></div><div className="mt-7 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"><input data-testid="input-passenger-name" value={passenger} onChange={(e) => setPassenger(e.target.value)} placeholder="Nome completo" className="rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-4 py-3 text-sm outline-none focus:border-[hsl(var(--accent))]" /><div className="flex items-center rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-4 py-3 text-sm"><span className="text-[hsl(var(--muted-foreground))]">Lugar&nbsp;</span><b>{seat || '—'}</b></div><button data-testid="button-confirm-booking" disabled={createBooking.isPending} onClick={book} className="rounded-xl bg-[hsl(var(--primary))] px-5 py-3 text-sm font-bold text-[hsl(var(--primary-foreground))] transition-transform hover:-translate-y-0.5 disabled:opacity-60">{createBooking.isPending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Reservar lugar'}</button></div>{notice && <p data-testid="status-booking-notice" className="mt-4 rounded-xl bg-[#e4f2e8] p-3 text-sm font-bold text-[#277145]">{notice}</p>}</div></div>}
+    {selected && <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0c292d99] p-0 backdrop-blur-sm md:items-center md:p-5"><div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] bg-[hsl(var(--card))] p-6 md:rounded-[24px] md:p-8"><div className="flex items-start justify-between"><div><p className="font-mono text-[10px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]">Detalhes da viagem</p><h2 className="mt-2 font-display text-3xl font-bold">{selected.origin} <span className="text-[#bd684d]">→</span> {selected.destination}</h2><p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{fullDate(selected.departureDate)} · Partida às {selected.departureTime}</p></div><button data-testid="button-close-booking" onClick={() => setSelectedTrip(null)} className="rounded-full bg-[hsl(var(--muted))] p-2"><X className="h-4 w-4" /></button></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-[hsl(var(--muted))] p-3"><p className="font-mono text-[9px] text-[hsl(var(--muted-foreground))]">MOTORISTA</p><p className="mt-1 text-sm font-bold">{selected.driverName}</p></div><div className="rounded-xl bg-[hsl(var(--muted))] p-3"><p className="font-mono text-[9px] text-[hsl(var(--muted-foreground))]">VEÍCULO</p><p className="mt-1 text-sm font-bold">{selected.vehicleLabel}</p></div><div className="rounded-xl bg-[hsl(var(--muted))] p-3"><p className="font-mono text-[9px] text-[hsl(var(--muted-foreground))]">PREÇO</p><p className="mt-1 text-sm font-bold">{money(selected.price)}</p></div></div><div className="mt-7"><p className="mb-3 text-sm font-bold">Escolha o seu lugar</p><QueryState loading={seats.isLoading} error={seats.error} onRetry={() => seats.refetch()}><div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{(seats.data || []).map((item) => { const free = item.seatStatus.toLowerCase() === 'available' || item.seatStatus.toLowerCase() === 'free'; const picked = seat === item.seatNumber; return <button disabled={!free} data-testid={`button-seat-${item.seatNumber}`} key={item.id} onClick={() => setSeat(item.seatNumber)} className={`rounded-lg border p-2 text-xs font-bold transition-colors ${picked ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent))] text-[hsl(var(--primary))]' : free ? 'border-[hsl(var(--border))] bg-[hsl(var(--background))] hover:border-[hsl(var(--accent))]' : 'cursor-not-allowed border-transparent bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] opacity-50'}`}>{item.seatNumber}</button> })}</div></QueryState></div><div className="mt-7 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">{session ? <div data-testid="chip-passenger-account" className="flex items-center gap-2 overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-4 py-3 text-sm"><UserRound className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" /><span className="truncate font-bold">{session.user.fullName}</span><span className="font-mono text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">conta</span></div> : <input data-testid="input-passenger-name" value={passenger} onChange={(e) => setPassenger(e.target.value)} placeholder="Nome completo" className="rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-4 py-3 text-sm outline-none focus:border-[hsl(var(--accent))]" />} <div className="flex items-center rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-4 py-3 text-sm"><span className="text-[hsl(var(--muted-foreground))]">Lugar&nbsp;</span><b>{seat || '—'}</b></div><button data-testid="button-confirm-booking" disabled={createBooking.isPending} onClick={book} className="rounded-xl bg-[hsl(var(--primary))] px-5 py-3 text-sm font-bold text-[hsl(var(--primary-foreground))] transition-transform hover:-translate-y-0.5 disabled:opacity-60">{createBooking.isPending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : session ? 'Reservar lugar' : 'Entrar para reservar'}</button></div>{notice && <p data-testid="status-booking-notice" className="mt-4 rounded-xl bg-[#e4f2e8] p-3 text-sm font-bold text-[#277145]">{notice}</p>}</div></div>}
   </div>;
 }
 
@@ -182,11 +229,21 @@ function Payments() {
 }
 
 function Router() {
-  return <ErrorBoundary><Shell><Switch><Route path="/" component={PassengerHome} /><Route path="/dashboard" component={Dashboard} /><Route path="/trips" component={Trips} /><Route path="/bookings" component={Bookings} /><Route path="/payments" component={Payments} /><Route component={NotFound} /></Switch></Shell></ErrorBoundary>;
+  return <ErrorBoundary><Shell><Switch>
+    <Route path="/" component={PassengerHome} />
+    <Route path="/login" component={Login} />
+    <Route path="/register" component={Register} />
+    <Route path="/profile"><RequireAuth><Profile /></RequireAuth></Route>
+    <Route path="/dashboard"><RequireAuth roles={['admin']}><Dashboard /></RequireAuth></Route>
+    <Route path="/trips"><RequireAuth roles={['admin']}><Trips /></RequireAuth></Route>
+    <Route path="/bookings"><RequireAuth><Bookings /></RequireAuth></Route>
+    <Route path="/payments"><RequireAuth roles={['admin']}><Payments /></RequireAuth></Route>
+    <Route component={NotFound} />
+  </Switch></Shell></ErrorBoundary>;
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><AuthProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></AuthProvider></TooltipProvider></QueryClientProvider>;
 }
 
 export default App;

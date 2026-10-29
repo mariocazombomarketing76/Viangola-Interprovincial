@@ -6,9 +6,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from .auth import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    issue_refresh_token,
+    require_roles,
+    revoke_refresh_token,
+    validate_refresh_token,
+    verify_password,
+)
 from .db import get_db
-from .models import Booking, Driver, Payment, Trip, TripSeat, User, Vehicle
-from .schemas import BookingInput, BookingOut, PaymentOut, SeatOut, TripInput, TripOut
+from .models import Booking, Driver, Payment, RefreshToken, Trip, TripSeat, User, Vehicle
+from .schemas import (
+    AuthStatus,
+    BookingInput,
+    BookingOut,
+    LoginInput,
+    LogoutInput,
+    PaymentOut,
+    RefreshInput,
+    RegisterInput,
+    SeatOut,
+    TokenOut,
+    TripInput,
+    TripOut,
+    UserOut,
+)
 
 app = FastAPI(title="Viangola Interprovincial API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -42,13 +66,107 @@ def payment_out(payment: Payment) -> PaymentOut:
     )
 
 
+def user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        fullName=user.full_name,
+        email=user.email,
+        phone=user.phone,
+        role=user.role,
+        isActive=user.is_active,
+        createdAt=user.created_at,
+        lastLogin=user.last_login,
+    )
+
+
+def issue_tokens(db: Session, user: User) -> TokenOut:
+    access_token, expires_in = create_access_token(user)
+    refresh_token = issue_refresh_token(db, user)
+    return TokenOut(
+        accessToken=access_token,
+        refreshToken=refresh_token,
+        tokenType="bearer",
+        expiresIn=expires_in,
+        user=user_out(user),
+    )
+
+
 @app.get("/api/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ----------------------------- Autenticação -----------------------------
+
+
+@app.post("/api/auth/register", response_model=TokenOut, status_code=201)
+def register(body: RegisterInput, db: Session = Depends(get_db)) -> TokenOut:
+    email = body.email.lower().strip()
+    if db.scalar(select(User.id).where(User.email == email)):
+        raise HTTPException(409, "Email já registado")
+    if body.phone and db.scalar(select(User.id).where(User.phone == body.phone)):
+        raise HTTPException(409, "Telefone já registado")
+    now = datetime.now(timezone.utc)
+    user = User(
+        full_name=body.fullName.strip(),
+        email=email,
+        phone=body.phone,
+        password_hash=hash_password(body.password),
+        role=body.role,
+        status="active",
+        is_active=True,
+        created_at=now,
+        updated_at=now,
+        last_login=now,
+    )
+    db.add(user)
+    db.flush()
+    tokens = issue_tokens(db, user)
+    db.commit()
+    return tokens
+
+
+@app.post("/api/auth/login", response_model=TokenOut)
+def login(body: LoginInput, db: Session = Depends(get_db)) -> TokenOut:
+    email = body.email.lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(401, "Credenciais inválidas")
+    if not user.is_active:
+        raise HTTPException(401, "Conta desativada")
+    user.last_login = datetime.now(timezone.utc)
+    tokens = issue_tokens(db, user)
+    db.commit()
+    return tokens
+
+
+@app.post("/api/auth/refresh", response_model=TokenOut)
+def refresh_session(body: RefreshInput, db: Session = Depends(get_db)) -> TokenOut:
+    user, jti = validate_refresh_token(db, body.refreshToken)
+    row = db.scalar(select(RefreshToken).where(RefreshToken.jti == jti))
+    if row is not None and row.revoked_at is None:
+        row.revoked_at = datetime.now(timezone.utc)
+        db.add(row)
+    tokens = issue_tokens(db, user)
+    db.commit()
+    return tokens
+
+
+@app.post("/api/auth/logout", response_model=AuthStatus)
+def logout(body: LogoutInput, db: Session = Depends(get_db)) -> AuthStatus:
+    if body.refreshToken:
+        revoke_refresh_token(db, body.refreshToken)
+        db.commit()
+    return AuthStatus(status="logged_out")
+
+
+@app.get("/api/auth/me", response_model=UserOut)
+def me(user: User = Depends(get_current_user)) -> UserOut:
+    return user_out(user)
+
+
 @app.get("/api/dashboard")
-def dashboard(db: Session = Depends(get_db)) -> dict:
+def dashboard(admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)) -> dict:
     paid = db.scalars(select(Booking).where(Booking.status == "paid")).all()
     today = datetime.now(timezone.utc).date()
     paid_by_day = {}
@@ -86,7 +204,7 @@ def list_trips(origin: str | None = None, destination: str | None = None, date: 
 
 
 @app.post("/api/trips", response_model=TripOut, status_code=201)
-def create_trip(body: TripInput, db: Session = Depends(get_db)):
+def create_trip(body: TripInput, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     trip = Trip(origin=body.origin, destination=body.destination, departure_date=body.departureDate, departure_time=body.departureTime, price=body.price, available_seats=body.totalSeats, total_seats=body.totalSeats, status="scheduled")
     db.add(trip)
     db.flush()
@@ -112,24 +230,32 @@ def get_trip_seats(trip_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/bookings", response_model=list[BookingOut])
-def list_bookings(status: str | None = None, db: Session = Depends(get_db)):
+def list_bookings(status: str | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     query = select(Booking).options(joinedload(Booking.trip), joinedload(Booking.passenger)).order_by(Booking.booking_date.desc())
+    # Ámbito por papel: admin vê tudo; motorista vê reservas das suas viagens;
+    # passageiro vê apenas as suas.
+    if user.role == "driver":
+        driver_id = db.scalar(select(Driver.id).where(Driver.user_id == user.id))
+        if driver_id is None:
+            return []
+        query = query.join(Booking.trip).where(Trip.driver_id == driver_id)
+    elif user.role == "passenger":
+        query = query.where(Booking.passenger_id == user.id)
     if status: query = query.where(Booking.status == status)
     return [booking_out(item) for item in db.scalars(query).all()]
 
 
 @app.post("/api/bookings", response_model=BookingOut, status_code=201)
-def create_booking(body: BookingInput, db: Session = Depends(get_db)):
+def create_booking(body: BookingInput, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> BookingOut:
+    if user.role != "passenger":
+        raise HTTPException(403, "Apenas passageiros podem reservar lugares")
     trip = db.scalar(select(Trip).where(Trip.id == body.tripId).with_for_update())
     if not trip: raise HTTPException(404, "Viagem não encontrada")
     seat = db.scalar(select(TripSeat).where(TripSeat.trip_id == trip.id, TripSeat.seat_number == body.seatNumber).with_for_update())
     if not seat or seat.seat_status != "available": raise HTTPException(409, "Este lugar já não está disponível")
-    passenger = db.scalar(select(User).where(User.full_name == body.passengerName, User.role == "passenger"))
-    if not passenger:
-        passenger = User(full_name=body.passengerName, role="passenger", status="active")
-        db.add(passenger)
-        db.flush()
-    booking = Booking(trip_id=trip.id, passenger_id=passenger.id, seat_number=seat.seat_number, amount=trip.price, status="pending", booking_date=datetime.now(timezone.utc))
+    # A reserva fica sempre associada à conta autenticada (o nome do corpo é
+    # apenas informativo e ignorado pelo servidor).
+    booking = Booking(trip_id=trip.id, passenger_id=user.id, seat_number=seat.seat_number, amount=trip.price, status="pending", booking_date=datetime.now(timezone.utc))
     seat.seat_status = "reserved"
     trip.available_seats -= 1
     db.add(booking)
@@ -141,12 +267,12 @@ def create_booking(body: BookingInput, db: Session = Depends(get_db)):
 
 
 @app.get("/api/payments", response_model=list[PaymentOut])
-def list_payments(db: Session = Depends(get_db)):
+def list_payments(admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     return [payment_out(item) for item in db.scalars(select(Payment).options(joinedload(Payment.booking).joinedload(Booking.passenger)).order_by(Payment.created_at.desc())).all()]
 
 
 @app.post("/api/payments/{payment_id}/confirm", response_model=PaymentOut)
-def confirm_payment(payment_id: int, db: Session = Depends(get_db)):
+def confirm_payment(payment_id: int, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
     if not payment: raise HTTPException(404, "Pagamento não encontrado")
     booking = db.scalar(select(Booking).where(Booking.id == payment.booking_id).with_for_update())
