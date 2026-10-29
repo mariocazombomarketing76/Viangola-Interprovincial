@@ -1,0 +1,45 @@
+# ---- Dependências ----
+node_modules/
+.pnpm-store/
+
+# ---- Artefactos de build ----
+dist/
+build/
+*.tsbuildinfo
+.vite/
+.tsbuild/
+
+# ---- Bundles git (transferências) ----
+*.bundle
+
+# ---- Python / uv ----
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ---- Base de dados local (desenvolvimento) ----
+*.db
+*.sqlite3
+*.sqlite-journal
+*.db-journal
+
+# ---- Variáveis de ambiente e segredos ----
+.env
+.env.*
+!.env.example
+
+# ---- Logs e cobertura ----
+*.log
+npm-debug.log*
+coverage/
+htmlcov/
+.nyc_output/
+
+# ---- Editor e sistema ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

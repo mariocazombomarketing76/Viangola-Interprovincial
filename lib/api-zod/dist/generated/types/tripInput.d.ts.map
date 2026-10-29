@@ -1,1 +1,0 @@
-{"version":3,"file":"tripInput.d.ts","sourceRoot":"","sources":["../../../src/generated/types/tripInput.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AAEH,MAAM,WAAW,SAAS;IACxB,mBAAmB;IACnB,MAAM,EAAE,MAAM,CAAC;IACf,mBAAmB;IACnB,WAAW,EAAE,MAAM,CAAC;IACpB,aAAa,EAAE,IAAI,CAAC;IACpB,aAAa,EAAE,MAAM,CAAC;IACtB,iBAAiB;IACjB,KAAK,EAAE,MAAM,CAAC;IACd,iBAAiB;IACjB,UAAU,EAAE,MAAM,CAAC;CACpB"}

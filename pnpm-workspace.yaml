@@ -35,10 +35,9 @@ minimumReleaseAgeExclude:
   - stripe-replit-sync
 
 packages:
-  - artifacts/*
+  - api-server
+  - viangola
   - lib/*
-  - lib/integrations/*
-  - scripts
 
 catalog:
   '@replit/vite-plugin-cartographer': ^0.5.21
@@ -68,11 +67,14 @@ catalog:
 
 autoInstallPeers: false
 
-onlyBuiltDependencies:
-  - '@swc/core'
-  - esbuild
-  - msw
-  - unrs-resolver
+# Lifecycle scripts de dependências que o workspace autoriza (pnpm 12 exige
+# uma regra explícita por pacote; sem ela o install falha com
+# ERR_PNPM_IGNORED_BUILDS). esbuild é necessário ao orval/lib api-spec.
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+  msw: true
+  unrs-resolver: true
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
